@@ -3,57 +3,51 @@ setlocal enabledelayedexpansion
 
 chcp 65001 > nul
 
-:: ================= 設定 =================
 set "PACKAGE=your.package.name"
 set "DEVICE=192.168.1.116"
-set "LOG_DIR=C:\Users\YourName\Debug\Directory\memory_leak\wifi"
+set "BASE_LOG_DIR=C:\Users\YourName\Debug\Directory\memory_leak\wifi"
 
-:: 取得間隔（秒）: 初期は細かく、その後は通常間隔
 set "INTERVAL_INITIAL=60"
 set "INITIAL_LOOPS=20"
 set "INTERVAL=300"
 
-:: ログレベル（logcatフィルタ）
 set "LOGCAT_FILTER=-v threadtime -b main,events,system -s art:D dalvikvm:D GC:D *:I"
-:: ==========================================
 
-:: 日時取得 (YYYYMMDD_HHMMSS形式)
+for /f "usebackq delims=" %%A in (`powershell -Command "Get-Date -Format 'yyyyMMdd'"`) do set "DATE=%%A"
 for /f "usebackq delims=" %%A in (`powershell -Command "Get-Date -Format 'yyyyMMdd_HHmmss'"`) do set "TIMESTAMP=%%A"
 
+set "LOG_DIR=%BASE_LOG_DIR%\%DATE%"
 set "METRICS_FILE=%LOG_DIR%\metrics_%TIMESTAMP%.csv"
 set "RUN_INFO_FILE=%LOG_DIR%\run_info_%TIMESTAMP%.txt"
 set "LOGCAT_FILE=%LOG_DIR%\logcat_%TIMESTAMP%.txt"
 
-:: ------------------ 準備 ------------------
 if not exist "%LOG_DIR%" (
-    mkdir "%LOG_DIR%" || (echo ERROR: ログ出力先を作成できません & exit /b 1)
+    mkdir "%LOG_DIR%" || (echo ERROR: cannot create log dir & exit /b 1)
 )
 
 adb version > nul
 if errorlevel 1 (
-    echo ERROR: adbコマンドが見つかりません
+    echo ERROR: adb not found
     pause
     exit /b 1
 )
 
-echo デバイス接続: %DEVICE%
+echo connect device: %DEVICE%
 adb connect %DEVICE% > nul
 adb devices | findstr /i "%DEVICE%" > nul
 if errorlevel 1 (
-    echo ERROR: 接続に失敗しました
+    echo ERROR: device connection failed
     pause
     exit /b 1
 )
 
-:: パッケージ存在確認
 adb -s %DEVICE% shell pm list packages | findstr /i "%PACKAGE%" > nul
 if errorlevel 1 (
-    echo ERROR: 指定パッケージが見つかりません %PACKAGE%
+    echo ERROR: package not found %PACKAGE%
     pause
     exit /b 1
 )
 
-:: メタ情報取得
 echo ==== RUN INFO (%TIMESTAMP%) ==== > "%RUN_INFO_FILE%"
 for /f "usebackq delims=" %%A in (`adb -s %DEVICE% shell getprop ro.product.model 2^>NUL`) do echo model=%%A>>"%RUN_INFO_FILE%"
 for /f "usebackq delims=" %%A in (`adb -s %DEVICE% shell getprop ro.build.display.id 2^>NUL`) do echo build=%%A>>"%RUN_INFO_FILE%"
@@ -65,16 +59,15 @@ for /f "usebackq delims=" %%A in (`adb -s %DEVICE% shell settings get global blu
 for /f "usebackq delims=" %%A in (`adb -s %DEVICE% shell settings get global wifi_on 2^>NUL`) do echo wifi=%%A>>"%RUN_INFO_FILE%"
 for /f "usebackq delims=" %%A in (`adb -s %DEVICE% shell dumpsys battery 2^>NUL ^| findstr /C:"level"`) do echo battery=%%A>>"%RUN_INFO_FILE%"
 
-:: logcat開始（別プロセス）
-echo logcat開始: %LOGCAT_FILE%
+echo start logcat: %LOGCAT_FILE%
 start "logcat" /b adb -s %DEVICE% logcat %LOGCAT_FILTER% > "%LOGCAT_FILE%"
 
-:: CSVヘッダ
-echo iso_time,pid,uptime_s,pss_kb,native_heap_kb,dalvik_heap_kb,graphics_kb,cpu_pct,proc_name,memfree_kb,cached_kb,swapfree_kb,pgfault,pgmajfault,pid_changed>"%METRICS_FILE%"
+echo iso_time,pid,uptime_s,pss_kb,native_heap_kb,dalvik_heap_kb,graphics_kb,cpu_pct,proc_name,memfree_kb,cached_kb,swapfree_kb,swap_kb,swappss_kb,pgfault,pgmajfault,pid_changed>"%METRICS_FILE%"
 
 echo ==========================================
-echo  LOGGING START for: %PACKAGE%
-echo  出力先: %LOG_DIR%
+echo LOGGING START for: %PACKAGE%
+echo LOG DIR: %LOG_DIR%
+echo DEVICE: %DEVICE%
 echo ==========================================
 
 set "LOOP=0"
@@ -92,6 +85,8 @@ set "LAST_PID="
     set "DALVIK=NA"
     set "GRAPHICS=NA"
     set "CPU=NA"
+    set "SWAP_PROC=NA"
+    set "SWAPPSS_PROC=NA"
     set "MEMFREE=NA"
     set "CACHED=NA"
     set "SWAPFREE=NA"
@@ -99,7 +94,7 @@ set "LAST_PID="
     set "PGMAJFAULT=NA"
     set "PID_CHANGE=0"
 
-    for /f "usebackq delims=" %%A in (`adb -s %DEVICE% shell date -Ins 2^>NUL`) do set "CUR_ISO=%%A"
+    for /f "usebackq delims=" %%A in (`powershell -Command "Get-Date -Format 'yyyy-MM-ddTHH:mm:ss.fffzzz'"`) do set "CUR_ISO=%%A"
     for /f "usebackq tokens=1" %%A in (`adb -s %DEVICE% shell cat /proc/uptime 2^>NUL`) do set "UPTIME=%%A"
 
     for /f "usebackq" %%A in (`adb -s %DEVICE% shell pidof -s %PACKAGE% 2^>NUL`) do set "PID=%%A"
@@ -108,12 +103,40 @@ set "LAST_PID="
         if defined LAST_PID if not "!LAST_PID!"=="!PID!" set "PID_CHANGE=1"
         set "LAST_PID=!PID!"
 
-        for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell dumpsys meminfo %PACKAGE% 2^>NUL ^| findstr /B /C:"TOTAL"`) do set "PSS=%%A"
-        for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell dumpsys meminfo %PACKAGE% 2^>NUL ^| findstr /C:"Native Heap"`) do set "NATIVE=%%A"
-        for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell dumpsys meminfo %PACKAGE% 2^>NUL ^| findstr /C:"Dalvik Heap"`) do set "DALVIK=%%A"
-        for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell dumpsys meminfo %PACKAGE% 2^>NUL ^| findstr /C:"Graphics"`) do set "GRAPHICS=%%A"
+        set "PSS="&set "NATIVE="&set "DALVIK="&set "GRAPHICS="
+        for /f "usebackq tokens=2 delims=," %%A in (`adb -s %DEVICE% shell dumpsys meminfo -c %PACKAGE% 2^>NUL ^| findstr /C:",TOTAL,"`) do set "PSS=%%A"
+        for /f "usebackq tokens=2 delims=," %%A in (`adb -s %DEVICE% shell dumpsys meminfo -c %PACKAGE% 2^>NUL ^| findstr /C:",Native Heap,"`) do set "NATIVE=%%A"
+        for /f "usebackq tokens=2 delims=," %%A in (`adb -s %DEVICE% shell dumpsys meminfo -c %PACKAGE% 2^>NUL ^| findstr /C:",Dalvik Heap,"`) do set "DALVIK=%%A"
+        for /f "usebackq tokens=2 delims=," %%A in (`adb -s %DEVICE% shell dumpsys meminfo -c %PACKAGE% 2^>NUL ^| findstr /C:",Graphics,"`) do set "GRAPHICS=%%A"
 
-        for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell top -b -n 1 -o PID,CPU,RES,PR,PCY,NAME 2^>NUL ^| findstr " !PID! "`) do (
+        if not defined PSS (
+            for /f "usebackq tokens=2,3" %%A in (`adb -s %DEVICE% shell dumpsys meminfo %PACKAGE% 2^>NUL ^| findstr /C:"TOTAL"`) do (
+                if "%%A"=="PSS:" (set "PSS=%%B") else set "PSS=%%A"
+            )
+        )
+        if not defined NATIVE (
+            for /f "usebackq tokens=1-5" %%A in (`adb -s %DEVICE% shell dumpsys meminfo %PACKAGE% 2^>NUL ^| findstr /C:"Native Heap"`) do (
+                if "%%B"=="Heap:" (set "NATIVE=%%C") else if "%%B"=="Heap" (set "NATIVE=%%C") else set "NATIVE=%%B"
+            )
+        )
+        if not defined DALVIK (
+            for /f "usebackq tokens=1-5" %%A in (`adb -s %DEVICE% shell dumpsys meminfo %PACKAGE% 2^>NUL ^| findstr /C:"Dalvik Heap"`) do (
+                if "%%B"=="Heap:" (set "DALVIK=%%C") else if "%%B"=="Heap" (set "DALVIK=%%C") else set "DALVIK=%%B"
+            )
+        )
+        if not defined GRAPHICS (
+            for /f "usebackq tokens=2,3" %%A in (`adb -s %DEVICE% shell dumpsys meminfo %PACKAGE% 2^>NUL ^| findstr /C:"Graphics"`) do (
+                if "%%A"=="Graphics" (set "GRAPHICS=%%B") else set "GRAPHICS=%%A"
+            )
+        )
+
+        for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/!PID!/smaps_rollup 2^>NUL ^| findstr /B /C:"Swap:"`) do set "SWAP_PROC=%%A"
+        for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/!PID!/smaps_rollup 2^>NUL ^| findstr /B /C:"SwapPss:"`) do set "SWAPPSS_PROC=%%A"
+        if "!SWAP_PROC!"=="NA" (
+            for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/!PID!/status 2^>NUL ^| findstr /B /C:"VmSwap"`) do set "SWAP_PROC=%%A"
+        )
+
+        for /f "usebackq tokens=1" %%A in (`adb -s %DEVICE% shell dumpsys cpuinfo %PACKAGE% 2^>NUL ^| findstr "%PACKAGE%"`) do (
             set "CPU=%%A"
             set "CPU=!CPU:%%=!"
         )
@@ -126,7 +149,7 @@ set "LAST_PID="
     for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/vmstat 2^>NUL ^| findstr /B /C:"pgfault"`) do set "PGFAULT=%%A"
     for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/vmstat 2^>NUL ^| findstr /B /C:"pgmajfault"`) do set "PGMAJFAULT=%%A"
 
-    echo !CUR_ISO!,!PID!,!UPTIME!,!PSS!,!NATIVE!,!DALVIK!,!GRAPHICS!,!CPU!,%PACKAGE%,!MEMFREE!,!CACHED!,!SWAPFREE!,!PGFAULT!,!PGMAJFAULT!,!PID_CHANGE!>>"%METRICS_FILE%"
+    echo !CUR_ISO!,!PID!,!UPTIME!,!PSS!,!NATIVE!,!DALVIK!,!GRAPHICS!,!CPU!,%PACKAGE%,!MEMFREE!,!CACHED!,!SWAPFREE!,!SWAP_PROC!,!SWAPPSS_PROC!,!PGFAULT!,!PGMAJFAULT!,!PID_CHANGE!>>"%METRICS_FILE%"
     echo [!CUR_ISO!] logged (PID=!PID! PSS=!PSS! CPU=!CPU! delay=!LOOP_DELAY!s)
 
     set /a LOOP+=1
