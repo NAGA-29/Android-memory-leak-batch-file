@@ -16,9 +16,12 @@ Androidアプリのメモリリーク調査用バッチ (Windows, adb 前提)。
 - memfree_kb: `/proc/meminfo` の MemFree（端末全体）。
 - memavail_kb: `/proc/meminfo` の MemAvailable（端末全体、実効的に確保可能なメモリ目安）。
 - cached_kb: `/proc/meminfo` の Cached（端末全体）。
+- swap_total_kb: `/proc/meminfo` の SwapTotal（端末全体のスワップ総量）。
 - swapfree_kb: `/proc/meminfo` の SwapFree（端末全体の空きスワップ）。
 - swap_kb: プロセスの Swap。`/proc/<pid>/smaps_rollup` の Swap、なければ `/proc/<pid>/status` の VmSwap。
 - swappss_kb: プロセスの SwapPss。`smaps_rollup` がある端末のみ取得、それ以外は `NA`。
+- data_avail_kb: `df -k /data` の Available（ユーザーデータ領域の空き容量）。
+- sdcard_avail_kb: `df -k /storage/emulated` の Available（内部ストレージ共有領域の空き容量）。
 - pgfault: `/proc/vmstat` の pgfault。
 - pgmajfault: `/proc/vmstat` の pgmajfault。
 
