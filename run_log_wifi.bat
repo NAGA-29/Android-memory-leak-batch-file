@@ -62,7 +62,7 @@ for /f "usebackq delims=" %%A in (`adb -s %DEVICE% shell dumpsys battery 2^>NUL 
 echo start logcat: %LOGCAT_FILE%
 start "logcat" /b adb -s %DEVICE% logcat %LOGCAT_FILTER% > "%LOGCAT_FILE%"
 
-echo iso_time,pid,uptime_s,pss_kb,native_heap_kb,dalvik_heap_kb,graphics_kb,cpu_pct,proc_name,memfree_kb,cached_kb,swapfree_kb,swap_kb,swappss_kb,pgfault,pgmajfault,pid_changed>"%METRICS_FILE%"
+echo iso_time,pid,uptime_s,pss_kb,native_heap_kb,dalvik_heap_kb,graphics_kb,cpu_pct,proc_name,memfree_kb,memavail_kb,cached_kb,swapfree_kb,swap_kb,swappss_kb,pgfault,pgmajfault,pid_changed>"%METRICS_FILE%"
 
 echo ==========================================
 echo LOGGING START for: %PACKAGE%
@@ -88,6 +88,7 @@ set "LAST_PID="
     set "SWAP_PROC=NA"
     set "SWAPPSS_PROC=NA"
     set "MEMFREE=NA"
+    set "MEMAVAIL=NA"
     set "CACHED=NA"
     set "SWAPFREE=NA"
     set "PGFAULT=NA"
@@ -143,13 +144,14 @@ set "LAST_PID="
     )
 
     for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/meminfo 2^>NUL ^| findstr /B /C:"MemFree"`) do set "MEMFREE=%%A"
+    for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/meminfo 2^>NUL ^| findstr /B /C:"MemAvailable"`) do set "MEMAVAIL=%%A"
     for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/meminfo 2^>NUL ^| findstr /B /C:"Cached"`) do set "CACHED=%%A"
     for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/meminfo 2^>NUL ^| findstr /B /C:"SwapFree"`) do set "SWAPFREE=%%A"
 
     for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/vmstat 2^>NUL ^| findstr /B /C:"pgfault"`) do set "PGFAULT=%%A"
     for /f "usebackq tokens=2" %%A in (`adb -s %DEVICE% shell cat /proc/vmstat 2^>NUL ^| findstr /B /C:"pgmajfault"`) do set "PGMAJFAULT=%%A"
 
-    echo !CUR_ISO!,!PID!,!UPTIME!,!PSS!,!NATIVE!,!DALVIK!,!GRAPHICS!,!CPU!,%PACKAGE%,!MEMFREE!,!CACHED!,!SWAPFREE!,!SWAP_PROC!,!SWAPPSS_PROC!,!PGFAULT!,!PGMAJFAULT!,!PID_CHANGE!>>"%METRICS_FILE%"
+    echo !CUR_ISO!,!PID!,!UPTIME!,!PSS!,!NATIVE!,!DALVIK!,!GRAPHICS!,!CPU!,%PACKAGE%,!MEMFREE!,!MEMAVAIL!,!CACHED!,!SWAPFREE!,!SWAP_PROC!,!SWAPPSS_PROC!,!PGFAULT!,!PGMAJFAULT!,!PID_CHANGE!>>"%METRICS_FILE%"
     echo [!CUR_ISO!] logged (PID=!PID! PSS=!PSS! CPU=!CPU! delay=!LOOP_DELAY!s)
 
     set /a LOOP+=1
