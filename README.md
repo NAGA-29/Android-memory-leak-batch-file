@@ -14,6 +14,7 @@ Androidアプリのメモリリーク調査用バッチ (Windows, adb 前提)。
 - cpu_pct: `dumpsys cpuinfo` からのCPU%。
 - proc_name: パッケージ名。
 - memfree_kb: `/proc/meminfo` の MemFree（端末全体）。
+- memavail_kb: `/proc/meminfo` の MemAvailable（端末全体、実効的に確保可能なメモリ目安）。
 - cached_kb: `/proc/meminfo` の Cached（端末全体）。
 - swapfree_kb: `/proc/meminfo` の SwapFree（端末全体の空きスワップ）。
 - swap_kb: プロセスの Swap。`/proc/<pid>/smaps_rollup` の Swap、なければ `/proc/<pid>/status` の VmSwap。
